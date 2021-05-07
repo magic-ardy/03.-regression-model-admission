@@ -1,0 +1,255 @@
+---
+title: "LBB Regression - University Admission"
+author: "Dwi Satya Ardyanto"
+date: "07-05-2021"
+output:
+  html_document:
+    number_sections: true
+    df_print: paged
+    highlight: tango
+    theme: cosmo
+    toc: yes
+    toc_depth: 4
+    toc_float:
+      collapsed: true
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+# clear-up the environment
+rm(list = ls())
+
+# chunk options
+knitr::opts_chunk$set(
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center",
+  comment = "#>"
+)
+
+options(scipen = 999)
+```
+
+<style>
+body {
+text-align: justify}
+</style>
+
+# Business Question
+Anda adalah owner salah satu sekolah prestisius di Bintaro! Salah satu bentuk promosi powerful adalah bahwa lulusannya diterima di universitas-universitas tersohor di dunia. Kebetulan karena Anda adalah seorang "statistic-lover" (統計オタク) dan saat ini sedang mengambil program Machine Learning di Algorit.Ma, Anda penasaran untuk memprediksi peluang diterimanya siswa-siswa Anda di universitas ternama di dunia.
+
+```{r}
+admission <- read.csv("C:/Users/dwiar/Documents/Algoritma/machine-learning/LBB/03. Ujian/Admission_Predict_Ver1.1.csv")[2:9]
+admission
+str(admission)
+```
+#sampling 500
+```{r}
+RNGkind(sample.kind = "Rounding")
+set.seed(666)
+insample <- sample(nrow(admission), 500)
+admission_sample <- admission[insample, ]
+head(admission_sample)
+```
+#cek persebaran data
+```{r}
+hist(admission_sample$Chance.of.Admit, breaks = 50)
+```
+```{r}
+boxplot(admission_sample$Chance.of.Admit)
+```
+
+#cek korelasi antarvariabel numerik
+```{r}
+library(GGally)
+ggcorr(admission_sample, label = T)
+```
+```{r}
+admission_sample %>% 
+  ggplot(aes(CGPA, Chance.of.Admit)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_minimal()
+```
+
+#buat model dengan variabel lengkap
+```{r}
+model_all <- lm(formula = Chance.of.Admit ~ ., data = admission_sample)
+summary(model_all)
+```
+#buat model tanpa variabel
+```{r}
+model_none <- lm(formula = Chance.of.Admit ~1, data = admission_sample)
+summary(model_none)
+```
+#buat model dengan backward
+```{r}
+model_bwd <- step(object = model_all, direction = "backward", trace = 0)
+summary(model_bwd)
+```
+#buat model dengan foreward
+```{r}
+model_fwd <- step(object = model_all, direction = "forward", trace = 0)
+summary(model_fwd)
+```
+#muat model dengan backward & foreward
+```{r}
+model_both <- step(object = model_all, direction = "both",
+                   scope = list(lower = model_none, upper = model_all), trace = 0)
+summary(model_both)
+```
+#model jika university rating dibuang
+```{r}
+model_no_rating =lm(formula = Chance.of.Admit ~ GRE.Score + TOEFL.Score + LOR 
++ CGPA + Research, data = admission_sample)
+summary(model_no_rating)
+```
+#Perbandingan lodel berdasarkan adjusted R square: model terbaik adalah model_bwd dan model_both. Kitab pilih model_both
+```{r}
+summary(model_all)$adj.r.squared
+summary(model_bwd)$adj.r.squared
+summary(model_fwd)$adj.r.squared
+summary(model_both)$adj.r.squared
+summary(model_no_rating)$adj.r.squared
+```
+
+#cek normality of residuals: residual normality terpenuhi karena p-value < α
+```{r}
+shapiro.test(model_both$residuals)
+```
+# uji homoscedasticity of residuals: asumsi residual homoscedasticity terpenuhi karena  karena p-value > α
+```{r}
+library(lmtest)
+library(zoo)
+bptest(formula = model_both)
+```
+
+#uji multicolinearity: tidak ada multicolinearity karena VIF < 10
+```{r}
+library(car)
+vif(model_both)
+```
+#Melihat overall model terbaik
+```{r}
+library(ggplot2)
+library(see)
+library(ggrepel)
+library(performance)
+check_model(model_both, dot_size = 2,
+  line_size = 0.8,
+  panel = TRUE,
+  check = "all",
+  alpha = 0.2,
+  dot_alpha = 0.8,
+  colors = c("#3aaf85", "#1b6ca8", "#cd201f"),
+  theme = "see::theme_lucid",
+  detrend = FALSE)
+```
+#Melihat performa model terbaik
+```{r}
+model_performance(model_both)
+```
+$$Chance.of.Admit  = -1.2800138 + 0.0018528/GRE + 0.0028072/TOEFL + 0.0064279/UR + 0.0172873/LOR + 0.1189994/CGPA + 0.0243538/Riset$$
+
+#Interpretasi
+1. Jika skor GRE naik 1 poin, maka peluang diterima akan naik sebesar 0.0018528, dengan asumsi semua variabel lainnya konstan;
+2. Jika skor TOEFL naik 1 poin, maka peluang diterima akan naik sebesar 0.0028072, dengan asumsi semua variabel lainnya konstan;
+3. Jika rating universitas naik 1 poin, maka peluang diterima akan naik sebesar 0.0064279, dengan asumsi semua variabel lainnya konstan;
+4. Jika skor LOR naik 1 poin, maka peluang diterima akan naik sebesar 0.0172873, dengan asumsi semua variabel lainnya konstan;
+5. Jika skor CGPA Score naik 1 poin, maka peluang diterima akan naik sebesar 0.1189994, dengan asumsi semua variabel lainnya konstan;
+6. Jika nilai riset naik 1 poin, maka peluang diterima akan naik sebesar 0.0243538, dengan asumsi semua variabel lainnya konstan;
+
+#Contoh
+Nilai Jokowi sebagai berikut:
+_ GRE: 300
+_ TOEFL: 95
+- Rating universitas: 4
+- LOR: 4.5
+- CGPA: 9.37
+- Research : 1
+
+Berapa peluang Jokowi diterima di universitas?
+```{r}
+-1.2800138 + (300 * 0.0018528) + (95 * 0.0028072) + (4 * 0.0064279) + (4.5 * 0.0172873) + (9.37 * 0.1189994) + (1 * 0.0243538)
+```
+
+#Sampling dan splitting model
+```{r}
+# index sampling
+index <- sample(nrow(admission_sample), 
+       nrow(admission_sample)*0.8)
+
+# splitting
+admission.train <- admission_sample[index,]
+admission.test <- admission_sample[-index,]
+```
+
+```{r}
+# re-check class imbalance
+prop.table(table(admission.train$Chance.of.Admit))
+```
+#Model baru berdasarkan data train
+```{r}
+model.admission <- lm(formula = Chance.of.Admit ~., data = admission.train)
+summary(model.admission)
+```
+#cek normality of residuals: # residual normality terpenuhi karena p-value < α
+```{r}
+shapiro.test(model.admission$residuals)
+```
+# uji homoscedasticity of residuals: asumsi residual homoscedasticity terpenuhi karena  karena p-value < α
+```{r}
+bptest(formula = model.admission)
+```
+#uji multicolinearity: tidak ada multicolinearity karena VIF < 10
+```{r}
+library(car)
+vif(model.admission)
+```
+# Overall performa model admission
+```{r}
+check_model(model.admission, dot_size = 2,
+  line_size = 0.8,
+  panel = TRUE,
+  check = "all",
+  alpha = 0.2,
+  dot_alpha = 0.8,
+  colors = c("#3aaf85", "#1b6ca8", "#cd201f"),
+  theme = "see::theme_lucid",
+  detrend = FALSE)
+```
+# Melihat performa model admission
+```{r}
+model_performance(model.admission)
+```
+# Prediksi peluang `Chance.of.Admit` untuk data **admission.test** dan disimpan pada kolom baru bernama `pred.admission`.
+```{r}
+predict(object = model.admission,
+        newdata = admission.test[1:10,],
+        type = "response")
+```
+```{r}
+admission.test$pred.admission <- predict(object = model.admission,
+                    newdata = admission.test,
+                    type = "response")
+
+head(admission.test)
+```
+#Klasifikasi data admission.test berdasarkan `pred.Admission` minimal 70% dan disimpan pada kolom baru bernama `pred.Label`.
+```{r}
+admission.test$pred.Label <- ifelse(admission.test$pred.admission >= 0.70, "1", "0")
+admission.test$pred.Label <- as.factor(admission.test$pred.Label)
+
+head(admission.test)
+```
+#Melihat hasil prediksi
+```{r}
+#admission.test %>%
+ # mutate_at(.vars = c("Chance.of.Admit", "pred.admission"), as.factor) %>%
+  #select(Chance.of.Admit, pred.admission, pred.Label) %>%
+  #head(10)
+```
+
